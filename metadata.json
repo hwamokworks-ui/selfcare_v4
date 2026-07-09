@@ -1,0 +1,6 @@
+{
+  "name": "오늘의 건강",
+  "description": "식단, 수분, 걸음, 수면, 컨디션, 체중, 생리 주기를 간편하게 기록하고 요가·명상 영상으로 마음을 돌보는 셀프 웰니스 트래커",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

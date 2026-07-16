@@ -98,10 +98,10 @@ export default function App({ userId, userEmail, onSignOut }: AppProps) {
     };
   }, [userId]);
 
-  // Update a single field inside today's record
-  const handleUpdateTodayRecord = async (updatedFields: Partial<DailyRecord>) => {
-    const existing = allRecords.find((r) => r.date === todayStr) || {
-      date: todayStr,
+  // Update a single field inside a given date's record
+  const handleUpdateRecordForDate = async (dateStr: string, updatedFields: Partial<DailyRecord>) => {
+    const existing = allRecords.find((r) => r.date === dateStr) || {
+      date: dateStr,
       meals: [],
       water: 0,
       steps: null,
@@ -114,8 +114,8 @@ export default function App({ userId, userEmail, onSignOut }: AppProps) {
     };
     const updatedRecord: DailyRecord = { ...existing, ...updatedFields };
 
-    const updatedRecords = allRecords.some((r) => r.date === todayStr)
-      ? allRecords.map((rec) => (rec.date === todayStr ? updatedRecord : rec))
+    const updatedRecords = allRecords.some((r) => r.date === dateStr)
+      ? allRecords.map((rec) => (rec.date === dateStr ? updatedRecord : rec))
       : [...allRecords, updatedRecord];
 
     setAllRecords(updatedRecords);
@@ -126,6 +126,9 @@ export default function App({ userId, userEmail, onSignOut }: AppProps) {
       setSyncError('동기화 실패, 다시 시도해 주세요');
     }
   };
+
+  const handleUpdateTodayRecord = (updatedFields: Partial<DailyRecord>) =>
+    handleUpdateRecordForDate(todayStr, updatedFields);
 
   // --- Videos manipulation callbacks ---
   const handleAddVideo = async (newVideoData: Omit<Video, 'id'>) => {
@@ -251,6 +254,7 @@ export default function App({ userId, userEmail, onSignOut }: AppProps) {
                 allRecords={allRecords}
                 goals={goals}
                 todayStr={todayStr}
+                onUpdateRecord={handleUpdateRecordForDate}
               />
             )}
             {currentTab === 'videos' && (

@@ -12,9 +12,12 @@ import {
   Utensils,
   Scale,
   Smile,
-  Heart
+  Heart,
+  Pencil,
+  Plus,
+  Check
 } from 'lucide-react';
-import { DailyRecord, UserGoals } from '../types';
+import { DailyRecord, Meal, MealType, PeriodData, UserGoals } from '../types';
 import { predictPeriod, formatDate, parseDate, addDays, getDaysDiff } from '../utils/period';
 
 function hasNoteContent(note: DailyRecord['note']): boolean {
@@ -25,12 +28,144 @@ interface CalendarTabProps {
   allRecords: DailyRecord[];
   goals: UserGoals;
   todayStr: string;
+  onUpdateRecord: (dateStr: string, updated: Partial<DailyRecord>) => void;
 }
 
-export default function CalendarTab({ allRecords, goals, todayStr }: CalendarTabProps) {
+const PERIOD_SYMPTOMS = ['복통', '두통', '피로', '붓기', '예민함', '요통', '어지러움', '메스꺼움'];
+
+export default function CalendarTab({ allRecords, goals, todayStr, onUpdateRecord }: CalendarTabProps) {
   const [viewDate, setViewDate] = useState<Date>(new Date(todayStr));
   const [selectedRecord, setSelectedRecord] = useState<DailyRecord | null>(null);
   const [selectedDateStr, setSelectedDateStr] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // --- Edit form state ---
+  const [editWater, setEditWater] = useState(0);
+  const [editSteps, setEditSteps] = useState<number | null>(null);
+  const [editSleepH, setEditSleepH] = useState<number | null>(null);
+  const [editSleepQ, setEditSleepQ] = useState<number | null>(null);
+  const [editWeight, setEditWeight] = useState<number | null>(null);
+  const [editMood, setEditMood] = useState<number | null>(null);
+  const [editPeriod, setEditPeriod] = useState<PeriodData | null>(null);
+  const [editMeals, setEditMeals] = useState<Meal[]>([]);
+  const [editNoteDiary, setEditNoteDiary] = useState('');
+  const [editNoteGood, setEditNoteGood] = useState('');
+  const [editNoteBad, setEditNoteBad] = useState('');
+
+  // --- New meal sub-form (inside edit mode) ---
+  const [mealType, setMealType] = useState<MealType>('breakfast');
+  const [mealName, setMealName] = useState('');
+  const [mealKcal, setMealKcal] = useState('');
+  const [mealCarbs, setMealCarbs] = useState('');
+  const [mealProtein, setMealProtein] = useState('');
+  const [mealFat, setMealFat] = useState('');
+
+  const closeSheet = () => {
+    setSelectedDateStr(null);
+    setSelectedRecord(null);
+    setIsEditing(false);
+  };
+
+  const handleStartEdit = () => {
+    if (!selectedRecord) return;
+    setEditWater(selectedRecord.water);
+    setEditSteps(selectedRecord.steps);
+    setEditSleepH(selectedRecord.sleepH);
+    setEditSleepQ(selectedRecord.sleepQ);
+    setEditWeight(selectedRecord.weight);
+    setEditMood(selectedRecord.mood);
+    setEditPeriod(selectedRecord.period);
+    setEditMeals(selectedRecord.meals);
+    setEditNoteDiary(selectedRecord.note?.diary ?? '');
+    setEditNoteGood(selectedRecord.note?.good ?? '');
+    setEditNoteBad(selectedRecord.note?.bad ?? '');
+    setMealType('breakfast');
+    setMealName('');
+    setMealKcal('');
+    setMealCarbs('');
+    setMealProtein('');
+    setMealFat('');
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedDateStr || !selectedRecord) return;
+
+    const trimmedDiary = editNoteDiary.trim();
+    const trimmedGood = editNoteGood.trim();
+    const trimmedBad = editNoteBad.trim();
+    const nextNote = trimmedDiary || trimmedGood || trimmedBad
+      ? {
+          diary: trimmedDiary ? editNoteDiary : null,
+          good: trimmedGood ? editNoteGood : null,
+          bad: trimmedBad ? editNoteBad : null,
+        }
+      : null;
+
+    const updatedFields: Partial<DailyRecord> = {
+      water: editWater,
+      steps: editSteps,
+      sleepH: editSleepH,
+      sleepQ: editSleepQ,
+      weight: editWeight,
+      mood: editMood,
+      period: editPeriod,
+      meals: editMeals,
+      note: nextNote,
+    };
+
+    onUpdateRecord(selectedDateStr, updatedFields);
+    setSelectedRecord({ ...selectedRecord, ...updatedFields });
+    setIsEditing(false);
+  };
+
+  const handleAddEditMeal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mealName.trim()) return;
+
+    const newMeal: Meal = {
+      id: `meal-${Date.now()}`,
+      type: mealType,
+      name: mealName,
+      kcal: Number(mealKcal) || 0,
+      carbs: Number(mealCarbs) || 0,
+      protein: Number(mealProtein) || 0,
+      fat: Number(mealFat) || 0,
+    };
+
+    setEditMeals((prev) => [...prev, newMeal]);
+    setMealName('');
+    setMealKcal('');
+    setMealCarbs('');
+    setMealProtein('');
+    setMealFat('');
+  };
+
+  const handleRemoveEditMeal = (id: string) => {
+    setEditMeals((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const handleEditPeriodToggle = () => {
+    const wasActive = !!(editPeriod && editPeriod.active);
+    setEditPeriod(wasActive ? null : { active: true, flow: 'medium', symptoms: [] });
+  };
+
+  const updateEditPeriodFlow = (flow: 'light' | 'medium' | 'heavy') => {
+    const cur = editPeriod || { active: true, flow: null, symptoms: [] };
+    setEditPeriod({ ...cur, active: true, flow });
+  };
+
+  const toggleEditPeriodSymptom = (symptom: string) => {
+    const cur = editPeriod || { active: true, flow: null, symptoms: [] };
+    const symptoms = cur.symptoms.includes(symptom)
+      ? cur.symptoms.filter((s) => s !== symptom)
+      : [...cur.symptoms, symptom];
+    setEditPeriod({ ...cur, active: true, symptoms });
+  };
 
   const currentYear = viewDate.getFullYear();
   const currentMonth = viewDate.getMonth(); // 0-11
@@ -93,6 +228,7 @@ export default function CalendarTab({ allRecords, goals, todayStr }: CalendarTab
     const cellDateStr = formatDate(cellDate);
     const matchedRecord = allRecords.find((r) => r.date === cellDateStr);
 
+    setIsEditing(false);
     setSelectedDateStr(cellDateStr);
     if (matchedRecord) {
       setSelectedRecord(matchedRecord);
@@ -300,7 +436,7 @@ export default function CalendarTab({ allRecords, goals, todayStr }: CalendarTab
       <AnimatePresence>
         {selectedDateStr && selectedRecord && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-end md:items-center justify-center p-0 md:p-4">
-            <div className="absolute inset-0" onClick={() => { setSelectedDateStr(null); setSelectedRecord(null); }} />
+            <div className="absolute inset-0" onClick={closeSheet} />
 
             <motion.div
               initial={{ y: '100%' }}
@@ -313,20 +449,400 @@ export default function CalendarTab({ allRecords, goals, todayStr }: CalendarTab
 
               <div className="flex justify-between items-center mb-5">
                 <div>
-                  <h3 className="font-bold text-lg text-[#2A2723] font-serif">기록 상세 보기</h3>
+                  <h3 className="font-bold text-lg text-[#2A2723] font-serif">
+                    {isEditing ? '기록 수정하기' : '기록 상세 보기'}
+                  </h3>
                   <p className="text-xs text-[#8A8271] mt-0.5 font-mono">{selectedDateStr}</p>
                 </div>
-                <button
-                  onClick={() => { setSelectedDateStr(null); setSelectedRecord(null); }}
-                  className="w-8.5 h-8.5 hover:bg-[#EEE9DD] rounded-full text-[#7C7669] flex items-center justify-center transition border-none cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {!isEditing && (
+                    <button
+                      onClick={handleStartEdit}
+                      className="px-3 py-2 bg-[#6F8F6A] hover:bg-[#5E7A59] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition border-none cursor-pointer"
+                      id="btn-record-edit"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      수정
+                    </button>
+                  )}
+                  <button
+                    onClick={closeSheet}
+                    className="w-8.5 h-8.5 hover:bg-[#EEE9DD] rounded-full text-[#7C7669] flex items-center justify-center transition border-none cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               {/* Scrollable logs */}
               <div className="flex-1 overflow-y-auto space-y-4 pb-6">
-                
+                {isEditing ? (
+                <div className="space-y-4">
+                  {/* Water */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                        <Droplet className="w-4 h-4 text-[#799FCB]" />
+                        수분 섭취량 (잔)
+                      </span>
+                      <span className="text-xs font-bold text-[#2A2723]">{editWater}잔 ({editWater * 250}ml)</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditWater((v) => Math.max(0, v - 1))}
+                        className="flex-1 py-2 bg-[#FBF9F3] border border-[#E4DECF] hover:bg-[#F2EEE2] text-[#7C7669] rounded-lg text-xs font-bold transition cursor-pointer"
+                      >
+                        - 한 잔
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditWater((v) => v + 1)}
+                        className="flex-1 py-2 bg-[#799FCB] hover:bg-[#6889B8] text-white rounded-lg text-xs font-bold transition border-none cursor-pointer"
+                      >
+                        + 한 잔
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Steps */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-2">
+                    <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                      <Footprints className="w-4 h-4 text-[#D08A2E]" />
+                      걸음 수
+                    </span>
+                    <input
+                      type="number"
+                      placeholder="예: 8500"
+                      value={editSteps ?? ''}
+                      onChange={(e) => setEditSteps(e.target.value === '' ? null : Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-[#E4DECF] bg-[#FBF9F3] rounded-lg focus:outline-none focus:border-[#D08A2E] text-xs font-bold text-[#2A2723]"
+                      id="edit-steps-value"
+                    />
+                  </div>
+
+                  {/* Sleep */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                        <Moon className="w-4 h-4 text-[#6E63B6]" />
+                        수면 시간
+                      </span>
+                      <span className="text-xs font-bold text-[#2A2723]">{editSleepH || 0} 시간</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="12"
+                      step="0.5"
+                      value={editSleepH || 0}
+                      onChange={(e) => setEditSleepH(Number(e.target.value) || null)}
+                      className="w-full h-2 bg-[#EEE9DD] rounded-lg appearance-none cursor-pointer accent-[#6E63B6]"
+                      id="edit-sleep-hours"
+                    />
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setEditSleepQ(level)}
+                          className={`py-2 rounded-lg border text-xs font-bold transition cursor-pointer ${
+                            editSleepQ === level
+                              ? 'border-[#6E63B6] bg-[#6E63B6] text-white'
+                              : 'border-[#EEE5DA] bg-[#FBF9F3] hover:bg-[#F2EEE2] text-[#8A8271]'
+                          }`}
+                        >
+                          {level === 1 && '😫'}
+                          {level === 2 && '🥱'}
+                          {level === 3 && '😐'}
+                          {level === 4 && '🙂'}
+                          {level === 5 && '😍'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Weight */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-2">
+                    <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                      <Scale className="w-4 h-4 text-[#4E6B4A]" />
+                      체중 (kg)
+                    </span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="예: 54.8"
+                      value={editWeight ?? ''}
+                      onChange={(e) => setEditWeight(e.target.value === '' ? null : Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-[#E4DECF] bg-[#FBF9F3] rounded-lg focus:outline-none focus:border-[#4E6B4A] text-xs font-bold text-[#2A2723]"
+                      id="edit-weight-value"
+                    />
+                  </div>
+
+                  {/* Mood */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-2">
+                    <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                      <Smile className="w-4 h-4 text-[#D69A55]" />
+                      오늘의 기분
+                    </span>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setEditMood(level)}
+                          className={`py-2.5 rounded-lg border text-lg transition cursor-pointer ${
+                            editMood === level
+                              ? 'border-[#B58A3C] bg-[#B58A3C]'
+                              : 'border-[#EEE5DA] bg-[#FBF9F3] hover:bg-[#F2EEE2]'
+                          }`}
+                        >
+                          {level === 1 && '😫'}
+                          {level === 2 && '🥱'}
+                          {level === 3 && '😐'}
+                          {level === 4 && '🙂'}
+                          {level === 5 && '😍'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Period */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                        <Heart className="w-4 h-4 text-[#C25E7A]" />
+                        생리 기록
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleEditPeriodToggle}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition border-none cursor-pointer ${
+                          editPeriod?.active
+                            ? 'bg-[#C25E7A] text-white'
+                            : 'bg-[#FBF9F3] border border-[#E4DECF] text-[#2A2723] hover:bg-[#F2EEE2]'
+                        }`}
+                      >
+                        {editPeriod?.active ? '생리 중' : '기록 없음'}
+                      </button>
+                    </div>
+
+                    {editPeriod?.active && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-2">
+                          {(['light', 'medium', 'heavy'] as const).map((flow) => (
+                            <button
+                              key={flow}
+                              type="button"
+                              onClick={() => updateEditPeriodFlow(flow)}
+                              className={`py-2 text-xs font-bold rounded-lg border transition cursor-pointer ${
+                                editPeriod?.flow === flow
+                                  ? 'border-[#C25E7A] bg-[#F8E7EC] text-[#C25E7A]'
+                                  : 'border-[#EEE5DA] bg-[#FBF9F3] text-[#8A8271]'
+                              }`}
+                            >
+                              {flow === 'light' && '적음'}
+                              {flow === 'medium' && '보통'}
+                              {flow === 'heavy' && '많음'}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {PERIOD_SYMPTOMS.map((symptom) => {
+                            const selected = !!editPeriod?.symptoms.includes(symptom);
+                            return (
+                              <button
+                                key={symptom}
+                                type="button"
+                                onClick={() => toggleEditPeriodSymptom(symptom)}
+                                className={`py-1.5 text-xs font-medium rounded-lg border flex items-center justify-center gap-1 transition cursor-pointer ${
+                                  selected
+                                    ? 'border-[#C25E7A] bg-[#F8E7EC] text-[#C25E7A] font-bold'
+                                    : 'border-[#EEE5DA] bg-[#FBF9F3] text-[#8A8271]'
+                                }`}
+                              >
+                                {selected && <Check className="w-3.5 h-3.5" />}
+                                {symptom}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Meals */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-3">
+                    <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                      <Utensils className="w-4 h-4 text-[#C0663B]" />
+                      섭취 식단 내역 ({editMeals.length})
+                    </span>
+
+                    <form onSubmit={handleAddEditMeal} className="space-y-2.5 bg-[#FBF9F3] p-3 rounded-lg border border-[#EEE5DA]">
+                      <div className="flex gap-1 bg-white p-1 rounded-lg border border-[#E4DECF]">
+                        {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setMealType(type)}
+                            className={`flex-1 py-1.5 rounded-md text-xs font-bold transition border-none cursor-pointer ${
+                              mealType === type
+                                ? 'bg-[#C0663B] text-white shadow-sm'
+                                : 'text-[#8A8271] hover:bg-[#FBF9F3]'
+                            }`}
+                          >
+                            {type === 'breakfast' && '아침'}
+                            {type === 'lunch' && '점심'}
+                            {type === 'dinner' && '저녁'}
+                            {type === 'snack' && '간식'}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="col-span-2">
+                          <input
+                            type="text"
+                            placeholder="음식 이름 (예: 연어 샐러드)"
+                            value={mealName}
+                            onChange={(e) => setMealName(e.target.value)}
+                            className="w-full px-3 py-2 border border-[#E4DECF] bg-white rounded-lg focus:outline-none focus:border-[#C0663B] text-xs font-bold text-[#2A2723]"
+                            id="edit-meal-name"
+                          />
+                        </div>
+                        <input
+                          type="number"
+                          placeholder="칼로리 (kcal)"
+                          value={mealKcal}
+                          onChange={(e) => setMealKcal(e.target.value)}
+                          className="w-full px-3 py-2 border border-[#E4DECF] bg-white rounded-lg focus:outline-none focus:border-[#C0663B] text-xs font-bold text-[#2A2723]"
+                          id="edit-meal-kcal"
+                        />
+                        <input
+                          type="number"
+                          placeholder="탄수화물 (g)"
+                          value={mealCarbs}
+                          onChange={(e) => setMealCarbs(e.target.value)}
+                          className="w-full px-3 py-2 border border-[#E4DECF] bg-white rounded-lg focus:outline-none focus:border-[#C0663B] text-xs font-bold text-[#2A2723]"
+                          id="edit-meal-carbs"
+                        />
+                        <input
+                          type="number"
+                          placeholder="단백질 (g)"
+                          value={mealProtein}
+                          onChange={(e) => setMealProtein(e.target.value)}
+                          className="w-full px-3 py-2 border border-[#E4DECF] bg-white rounded-lg focus:outline-none focus:border-[#C0663B] text-xs font-bold text-[#2A2723]"
+                          id="edit-meal-protein"
+                        />
+                        <input
+                          type="number"
+                          placeholder="지방 (g)"
+                          value={mealFat}
+                          onChange={(e) => setMealFat(e.target.value)}
+                          className="w-full px-3 py-2 border border-[#E4DECF] bg-white rounded-lg focus:outline-none focus:border-[#C0663B] text-xs font-bold text-[#2A2723]"
+                          id="edit-meal-fat"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-2 bg-[#C0663B] hover:bg-[#A3522C] text-white text-xs font-bold rounded-lg border-none cursor-pointer transition flex justify-center items-center gap-1"
+                        id="btn-edit-meal-save"
+                      >
+                        <Plus className="w-4 h-4" /> 식단에 추가
+                      </button>
+                    </form>
+
+                    {editMeals.length > 0 && (
+                      <div className="space-y-1.5">
+                        {editMeals.map((meal) => (
+                          <div key={meal.id} className="bg-[#FBF9F3] p-2.5 rounded-lg border border-[#E4DECF]/60 flex justify-between items-center text-xs">
+                            <div>
+                              <span className="px-1.5 py-0.5 bg-[#F7EAE1] text-[#C0663B] rounded text-[9px] font-extrabold uppercase mr-1.5">
+                                {meal.type === 'breakfast' && '아침'}
+                                {meal.type === 'lunch' && '점심'}
+                                {meal.type === 'dinner' && '저녁'}
+                                {meal.type === 'snack' && '간식'}
+                              </span>
+                              <span className="font-bold text-[#2A2723]">{meal.name}</span>
+                              <span className="font-bold text-[#C0663B] ml-1.5">{meal.kcal}kcal</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveEditMeal(meal.id)}
+                              className="p-1 hover:bg-[#F2EEE2] text-[#C4BCAC] hover:text-[#C25E7A] rounded transition border-none cursor-pointer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mind record */}
+                  <div className="p-3.5 bg-white rounded-xl border border-[#E4DECF] space-y-3">
+                    <span className="text-xs font-bold text-[#2A2723] flex items-center gap-1.5">
+                      <Heart className="w-4 h-4 text-[#B58A3C]" />
+                      마음 기록
+                    </span>
+                    <div>
+                      <label className="text-[10px] font-bold text-[#8A8271] block mb-1">오늘의 일기</label>
+                      <textarea
+                        value={editNoteDiary}
+                        onChange={(e) => setEditNoteDiary(e.target.value)}
+                        rows={3}
+                        placeholder="오늘의 일기"
+                        className="w-full resize-none rounded-lg border border-[#EEE5DA] bg-[#FBF9F3] p-3 text-xs text-[#2A2723] placeholder:text-[#B8AF9C] focus:outline-none focus:ring-2 focus:ring-[#6F8F6A]/40"
+                        id="edit-note-diary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-[#8A8271] block mb-1">잘한 일</label>
+                      <textarea
+                        value={editNoteGood}
+                        onChange={(e) => setEditNoteGood(e.target.value)}
+                        rows={2}
+                        placeholder="잘한 일"
+                        className="w-full resize-none rounded-lg border border-[#EEE5DA] bg-[#FBF9F3] p-3 text-xs text-[#2A2723] placeholder:text-[#B8AF9C] focus:outline-none focus:ring-2 focus:ring-[#6F8F6A]/40"
+                        id="edit-note-good"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-[#8A8271] block mb-1">잘못한 일</label>
+                      <textarea
+                        value={editNoteBad}
+                        onChange={(e) => setEditNoteBad(e.target.value)}
+                        rows={2}
+                        placeholder="잘못한 일"
+                        className="w-full resize-none rounded-lg border border-[#EEE5DA] bg-[#FBF9F3] p-3 text-xs text-[#2A2723] placeholder:text-[#B8AF9C] focus:outline-none focus:ring-2 focus:ring-[#6F8F6A]/40"
+                        id="edit-note-bad"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Save / Cancel */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCancelEdit}
+                      className="flex-1 py-3 bg-[#FBF9F3] border border-[#E4DECF] hover:bg-[#F2EEE2] text-[#2A2723] rounded-xl text-sm font-bold transition cursor-pointer"
+                      id="btn-record-edit-cancel"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      className="flex-1 py-3 bg-[#6F8F6A] hover:bg-[#5E7A59] text-white rounded-xl text-sm font-bold transition border-none cursor-pointer"
+                      id="btn-record-edit-save"
+                    >
+                      저장하기
+                    </button>
+                  </div>
+                </div>
+                ) : (
+                <>
                 {/* Check if absolutely empty */}
                 {selectedRecord.water === 0 &&
                  !selectedRecord.steps &&
@@ -493,6 +1009,8 @@ export default function CalendarTab({ allRecords, goals, todayStr }: CalendarTab
                       </div>
                     )}
                   </>
+                )}
+                </>
                 )}
               </div>
             </motion.div>
